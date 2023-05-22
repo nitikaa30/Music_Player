@@ -9,12 +9,14 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.RequiresApi
+import androidx.navigation.fragment.navArgs
 import com.bumptech.glide.Glide
 import com.example.musicplayer.databinding.FragmentMusicBinding
 import com.example.musicplayer.mp3.model.songs
 import com.example.musicplayer.mp3.model.songsItem
 import com.example.musicplayer.mp3.retrofit.Retrofit
 import com.example.musicplayer.mp3.service.MusicService
+import androidx.navigation.fragment.navArgs
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -26,6 +28,14 @@ class Music : Fragment()  {
     private lateinit var musicPlayerServiceIntent: Intent
     private var isMusicPlaying = false
     private var currentSong: songsItem?=null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        arguments?.let {
+            currentSong = it.getParcelable(SONG_ITEM_KEY)
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -40,6 +50,8 @@ class Music : Fragment()  {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+
+        currentSong = arguments?.getParcelable("songItem")
 
         binding.mPause.visibility=View.GONE
         binding.mStart.setOnClickListener {
@@ -105,6 +117,14 @@ class Music : Fragment()  {
         private const val ACTION_NEXT = "next"
         private const val ACTION_PREVIOUS="previous"
         private const val SONG_ITEM_KEY = "songItem"
+
+        fun newInstance(songItem: songsItem): Music {
+            val fragment = Music()
+            val args = Bundle()
+            args.putParcelable(SONG_ITEM_KEY, songItem)
+            fragment.arguments = args
+            return fragment
+        }
     }
 
 

@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.core.os.bundleOf
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -60,6 +61,7 @@ class MusicList : Fragment() {
         })
         adapter.setOnItemClickListener(object :Adapter.OnItemClickListener{
             override fun onItemClick(song: songsItem) {
+                val bundle = bundleOf("songItem" to song)
                 findNavController().navigate(R.id.action_musicList_to_music)
 
             }
