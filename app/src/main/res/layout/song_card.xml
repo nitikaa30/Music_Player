@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:cardCornerRadius="2dp"
+    app:cardElevation="4dp"
+    app:cardUseCompatPadding="true"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <ImageView
+            android:id="@+id/sImage"
+            android:layout_width="@dimen/_25sdp"
+            android:layout_height="@dimen/_25sdp"
+            android:layout_marginStart="@dimen/_5sdp"
+            android:layout_marginTop="@dimen/_5sdp"/>
+        <TextView
+            android:id="@+id/sName"
+            android:layout_width="@dimen/_250sdp"
+            android:layout_height="@dimen/_15sdp"
+            android:layout_marginStart="@dimen/_67sdp"
+            android:layout_marginTop="@dimen/_5sdp"
+            android:textSize="@dimen/_12sdp"
+            android:textStyle="bold"/>
+        <TextView
+            android:id="@+id/sSinger"
+            android:layout_width="@dimen/_250sdp"
+            android:layout_height="@dimen/_10sdp"
+            android:layout_marginTop="@dimen/_22sdp"
+            android:layout_marginStart="@dimen/_67sdp"
+            android:layout_marginBottom="@dimen/_5sdp"
+            android:textSize="@dimen/_8sdp"/>
+
+    </RelativeLayout>
+
+</androidx.cardview.widget.CardView>
