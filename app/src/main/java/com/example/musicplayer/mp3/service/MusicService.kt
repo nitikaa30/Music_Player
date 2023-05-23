@@ -1,12 +1,20 @@
 package com.example.musicplayer.mp3.service
 
 import android.annotation.SuppressLint
-import android.app.*
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.IBinder
+import android.os.Parcel
+import android.os.Parcelable
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -15,16 +23,21 @@ import androidx.core.app.NotificationManagerCompat
 import com.example.musicplayer.R
 import com.example.musicplayer.mp3.fragments.Music
 import com.example.musicplayer.mp3.model.songsItem
+import com.example.musicplayer.mp3.receiver.MusicBroadcastReceiver
+import com.example.musicplayer.mp3.retrofit.API
 import com.example.musicplayer.mp3.retrofit.Retrofit
+import okhttp3.ResponseBody
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import retrofit2.converter.gson.GsonConverterFactory
 
 class MusicService : Service() {
     private lateinit var context: Context
+    private lateinit var musicBroadcastReceiver: MusicBroadcastReceiver
     private lateinit var mediaPlayer: MediaPlayer
+    private lateinit var audioManager: AudioManager
     private lateinit var notificationManager: NotificationManagerCompat
-    private var currentSongIndex = 0
     private var isPaused = false
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -35,6 +48,18 @@ class MusicService : Service() {
         super.onCreate()
         mediaPlayer = MediaPlayer()
         notificationManager = NotificationManagerCompat.from(this)
+        musicBroadcastReceiver = MusicBroadcastReceiver()
+        registerReceiver(musicBroadcastReceiver, IntentFilter().apply {
+            addAction(ACTION_PLAY)
+            addAction(ACTION_PAUSE)
+            addAction(ACTION_NEXT)
+        })
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.requestAudioFocus(
+            null, // Use null listener as we don't need audio focus change notifications
+            AudioManager.STREAM_MUSIC,
+            AudioManager.AUDIOFOCUS_GAIN
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -48,7 +73,8 @@ class MusicService : Service() {
                     isPaused = false
                 } else {
                     if (songItem != null) {
-                        currentSongIndex = (songItem.id?.toInt() ?: startMusicPlayback(songItem)) as Int
+                        startMusicPlayback(songItem)
+                        Log.d("playyy",startId.toString())
                     }
                 }
             }
@@ -57,8 +83,8 @@ class MusicService : Service() {
                 isPaused = true
             }
             ACTION_NEXT -> {
-                currentSongIndex = (currentSongIndex + 1) % totalSongsCount
                 if (songItem != null) {
+                    Log.d("music",songItem.url.toString())
                     startMusicPlayback(songItem)
                 }
             }
@@ -71,10 +97,12 @@ class MusicService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterReceiver(musicBroadcastReceiver)
+        audioManager.abandonAudioFocus(null)
         mediaPlayer.release()
     }
 
-    @SuppressLint("UnspecifiedImmutableFlag")
+    @SuppressLint("UnspecifiedImmutableFlag", "ResourceAsColor")
     private fun createNotification(): Notification {
         val channelId = "music_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -84,32 +112,24 @@ class MusicService : Service() {
         val notificationIntent = Intent(this, Music::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0)
 
-        // Create the pending intents for the playback actions
-        val playIntent = Intent(this, MusicService::class.java).apply {
-            action = ACTION_PLAY
-            putExtra(SONG_ITEM_KEY, currentSongIndex)
-        }
-        val playPendingIntent = PendingIntent.getService(
+        val playIntent = Intent(ACTION_PLAY)
+        val playPendingIntent = PendingIntent.getBroadcast(
             this,
             0,
             playIntent,
             PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val pauseIntent = Intent(this, MusicService::class.java).apply {
-            action = ACTION_PAUSE
-        }
-        val pausePendingIntent = PendingIntent.getService(
+        val pauseIntent = Intent(ACTION_PAUSE)
+        val pausePendingIntent = PendingIntent.getBroadcast(
             this,
             0,
             pauseIntent,
             PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val nextIntent = Intent(this, MusicService::class.java).apply {
-            action = ACTION_NEXT
-        }
-        val nextPendingIntent = PendingIntent.getService(
+        val nextIntent = Intent(ACTION_NEXT)
+        val nextPendingIntent = PendingIntent.getBroadcast(
             this,
             0,
             nextIntent,
@@ -120,76 +140,75 @@ class MusicService : Service() {
             .setContentTitle("Music")
             .setContentText("Playing Music")
             .setSmallIcon(R.drawable.music_note)
-            .setContentIntent(pendingIntent)
-            .addAction(NotificationCompat.Action(R.drawable.skip_previous, "Previous", null)) // Add previous button if needed
-            .addAction(
-                NotificationCompat.Action(
-                    R.drawable.baseline_play_circle_filled_24,
-                    "Play",
-                    playPendingIntent
-                )
-            )
-            .addAction(NotificationCompat.Action(R.drawable.pause, "Pause", pausePendingIntent))
-            .addAction(NotificationCompat.Action(R.drawable.skip_next, "Next", nextPendingIntent))
+            .setContentIntent(pendingIntent).setColor(R.color.grey)
+            .addAction(R.drawable.baseline_play_circle_filled_24, "Play", playPendingIntent)
+            .addAction(R.drawable.pause, "Pause", pausePendingIntent)
+            .addAction(R.drawable.skip_next, "Next", nextPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOnlyAlertOnce(true)
             .build()
 
         return notification
     }
 
-    private fun startMusicPlayback(songItem: songsItem) {
-        songItem.id?.let {
-            Retrofit.apiInterface.getSongUrl(it).enqueue(object : Callback<songsItem> {
-                override fun onResponse(call: Call<songsItem>, response: Response<songsItem>) {
-                    if (response.isSuccessful) {
-                        val songUrl = response.body()?.url
-                        if (songUrl != null) {
-                            mediaPlayer.reset()
-                            mediaPlayer.setDataSource(songUrl)
-                            mediaPlayer.prepareAsync()
-                            mediaPlayer.setOnPreparedListener {
-                                mediaPlayer.start()
-                            }
-                        } else {
-                            Log.d("null", "no url")
-                            // Handle case when song URL is null
-                        }
-                    } else {
-                        Log.d("err", response.errorBody().toString())
-                        // Handle API call failure
-                    }
-                }
-
-                override fun onFailure(call: Call<songsItem>, t: Throwable) {
-                    Toast.makeText(applicationContext, t.message, Toast.LENGTH_LONG).show()
-                    // Handle API call failure
-                }
-            })
-        }
-    }
-
     @RequiresApi(Build.VERSION_CODES.O)
     private fun createNotificationChannel(channelId: String) {
-        val channelName = "Music Channel"
         val channel = NotificationChannel(
             channelId,
-            channelName,
-            NotificationManager.IMPORTANCE_HIGH
+            "Music Channel",
+            NotificationManager.IMPORTANCE_LOW
         )
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.createNotificationChannel(channel)
     }
 
+    private fun startMusicPlayback(songItem: songsItem) {
+        songItem.title?.let {
+            Retrofit.apiInterface.getSongUrl(songItem.url ?: "").enqueue(object : Callback<songsItem> {
+                @RequiresApi(Build.VERSION_CODES.O)
+                override fun onResponse(call: Call<songsItem>, response: Response<songsItem>) {
+                    if (response.isSuccessful) {
+                        val inputStream = response.body()?.url
+                        Log.d("input",inputStream.toString())
+                        if (!inputStream.isNullOrEmpty()) {
+                            try {
+                                Log.d("here",response.message())
+                                mediaPlayer.reset()
+                                mediaPlayer.setDataSource(inputStream)
+                                mediaPlayer.prepareAsync()
+                                mediaPlayer.setOnPreparedListener {
+                                    Log.d("mp",mediaPlayer.getDrmPropertyString(notificationManager.toString()))
+                                    mediaPlayer.start()
+
+                                }
+                            } catch (e: Exception) {
+                                Log.d("exception",e.message.toString())
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+                }
+
+                override fun onFailure(call: Call<songsItem>, t: Throwable) {
+                    Log.d("failed",t.message.toString())
+                    Toast.makeText(context, "Failed to fetch song URL", Toast.LENGTH_SHORT).show()
+                }
+            })
+        }
+    }
+
     companion object {
+        private const val ACTION_KEY = "ACTION"
+        private const val SONG_ITEM_KEY = "SONG_ITEM"
         private const val NOTIFICATION_ID = 1
-        const val ACTION_KEY = "action"
-        const val ACTION_PLAY = "play"
-        const val ACTION_PAUSE = "pause"
-        const val ACTION_NEXT = "next"
-        const val SONG_ITEM_KEY = "songItem"
-        private val totalSongsCount = 6 // Total number of songs
+
+        const val ACTION_PLAY = "com.example.musicplayer.ACTION_PLAY"
+        const val ACTION_PAUSE = "com.example.musicplayer.ACTION_PAUSE"
+        const val ACTION_NEXT = "com.example.musicplayer.ACTION_NEXT"
+
     }
 }
+
 
 //class MusicService: Service() {
 //    private lateinit var mediaPlayer: MediaPlayer

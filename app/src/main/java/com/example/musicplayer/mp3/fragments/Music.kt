@@ -9,6 +9,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import androidx.navigation.fragment.navArgs
 import com.bumptech.glide.Glide
 import com.example.musicplayer.databinding.FragmentMusicBinding
@@ -58,8 +59,8 @@ class Music : Fragment()  {
             binding.mStart.visibility=View.GONE
             binding.mPause.visibility=View.VISIBLE
             if (!isMusicPlaying) {
-                currentSong.let { it1 -> if (it1 != null) {
-                    Log.d("iPlay",it1.url.toString())
+                currentSong?.url.let { it1 -> if (it1 != null) {
+                    Log.d("iPlay",it1.toString())
                 }
                     if (it1 != null) {
                         startmusicservice(ACTION_PLAY, it1)
@@ -75,21 +76,21 @@ class Music : Fragment()  {
             binding.mPause.visibility=View.GONE
             binding.mStart.visibility=View.VISIBLE
             if (isMusicPlaying) {
-                currentSong?.let { it1 -> startmusicservice(ACTION_PAUSE, it1) }
+                currentSong?.url?.let { it1 -> startmusicservice(ACTION_PAUSE, it1) }
                 isMusicPlaying = false
                 Log.d("Pause", currentSong?.artist.toString())
             }
         }
         binding.mSkipNext.setOnClickListener {
             if (isMusicPlaying) {
-                currentSong?.let { it1 -> startmusicservice(ACTION_NEXT, it1) }
+                (currentSong)?.url?.let { it1 -> startmusicservice(ACTION_NEXT, it1) }
                 Log.d("Next", currentSong?.artist.toString())
             }
             currentSong?.let { it1 -> updateUI(it1) }
         }
         binding.mSkipPrevious.setOnClickListener {
             if (isMusicPlaying){
-                currentSong?.let { it1 -> startmusicservice(ACTION_PREVIOUS, it1) }
+                currentSong?.url?.let { it1 -> startmusicservice(ACTION_PREVIOUS, it1) }
                 Log.d("Previous", currentSong?.artist.toString())
             }
             currentSong?.let { it1 -> updateUI(it1) }
@@ -102,14 +103,31 @@ class Music : Fragment()  {
         Log.d("Artist", binding.mArtist.toString())
     }
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun startmusicservice(action: String, songsItem:songsItem) {
+    private fun startmusicservice(action: String, songUrl:String) {
         musicPlayerServiceIntent = Intent(requireContext(), MusicService::class.java).apply {
             putExtra(ACTION_KEY, action)
-            putExtra(SONG_ITEM_KEY, songsItem)
+            putExtra(SONG_ITEM_KEY, songUrl)
             Log.d("service",action)
         }
         requireActivity().startForegroundService(musicPlayerServiceIntent)
     }
+//    @RequiresApi(Build.VERSION_CODES.O)
+//    private fun skipToNextSong() {
+//        val currentIndex = currentSong?.id?.toInt()
+//        val nextIndex = currentIndex?.plus(1)
+//        currentSong?.id = nextIndex.toString()
+//        currentSong?.let { startmusicservice(ACTION_NEXT, it) }
+//        currentSong?.let { updateUI(it) }
+//    }
+//
+//    @RequiresApi(Build.VERSION_CODES.O)
+//    private fun skipToPreviousSong() {
+//        val currentIndex = currentSong?.id?.toInt()
+//        val previousIndex = (currentIndex?.minus(1))
+//        currentSong?.id = previousIndex.toString()
+//        currentSong?.let { startmusicservice(ACTION_PREVIOUS, it) }
+//        currentSong?.let { updateUI(it) }
+//    }
     companion object {
         private const val ACTION_KEY = "action"
         private const val ACTION_PLAY = "play"
@@ -117,6 +135,7 @@ class Music : Fragment()  {
         private const val ACTION_NEXT = "next"
         private const val ACTION_PREVIOUS="previous"
         private const val SONG_ITEM_KEY = "songItem"
+        private val totalSongsCount = 6
 
         fun newInstance(songItem: songsItem): Music {
             val fragment = Music()

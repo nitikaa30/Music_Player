@@ -62,7 +62,7 @@ class MusicList : Fragment() {
         adapter.setOnItemClickListener(object :Adapter.OnItemClickListener{
             override fun onItemClick(song: songsItem) {
                 val bundle = bundleOf("songItem" to song)
-                findNavController().navigate(R.id.action_musicList_to_music)
+                findNavController().navigate(R.id.action_musicList_to_music,bundle)
 
             }
         })
