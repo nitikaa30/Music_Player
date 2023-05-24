@@ -1,11 +1,8 @@
 package com.example.musicplayer.mp3.service
 
 import android.annotation.SuppressLint
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
+import android.app.*
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -13,32 +10,25 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.IBinder
-import android.os.Parcel
-import android.os.Parcelable
 import android.util.Log
-import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.musicplayer.R
 import com.example.musicplayer.mp3.fragments.Music
 import com.example.musicplayer.mp3.model.songsItem
-import com.example.musicplayer.mp3.receiver.MusicBroadcastReceiver
-import com.example.musicplayer.mp3.retrofit.API
-import com.example.musicplayer.mp3.retrofit.Retrofit
-import okhttp3.ResponseBody
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
-import retrofit2.converter.gson.GsonConverterFactory
+import java.io.IOException
 
 class MusicService : Service() {
-    private lateinit var context: Context
-    private lateinit var musicBroadcastReceiver: MusicBroadcastReceiver
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var audioManager: AudioManager
     private lateinit var notificationManager: NotificationManagerCompat
     private var isPaused = false
+    private var songName: String = ""
+    private var artistName: String = ""
+    private var image:String=""
+    private var currentSongIndex: Int = -1
+    private var songList: ArrayList<songsItem>? = null
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
@@ -46,13 +36,16 @@ class MusicService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+
+        Log.d("onCreate","onCreate")
         mediaPlayer = MediaPlayer()
         notificationManager = NotificationManagerCompat.from(this)
-        musicBroadcastReceiver = MusicBroadcastReceiver()
-        registerReceiver(musicBroadcastReceiver, IntentFilter().apply {
+        registerReceiver(MusicBroadcastReceiver(), IntentFilter().apply {
+            Log.d("media",MusicBroadcastReceiver().toString())
             addAction(ACTION_PLAY)
             addAction(ACTION_PAUSE)
             addAction(ACTION_NEXT)
+            addAction(ACTION_PREVIOUS)
         })
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioManager.requestAudioFocus(
@@ -60,20 +53,38 @@ class MusicService : Service() {
             AudioManager.STREAM_MUSIC,
             AudioManager.AUDIOFOCUS_GAIN
         )
+        Log.d("audio",audioManager.toString())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d("onStart",startId.toString())
         val action = intent?.getStringExtra(ACTION_KEY)
-        val songItem = intent?.getParcelableExtra<songsItem>(SONG_ITEM_KEY)
+        songName= intent?.getStringExtra(NAME).toString()
+        artistName= intent?.getStringExtra(SONG).toString()
+        image=intent?.getStringExtra(IMAGE).toString()
+        songList = intent?.getParcelableArrayListExtra("songList")
+        currentSongIndex = intent?.getIntExtra(CURRENT_SONG_INDEX, -1) ?: -1
+
+        Log.d("sAction",action.toString())
 
         when (action) {
             ACTION_PLAY -> {
+                if (!isPaused && mediaPlayer.isPlaying) {
+                    return START_STICKY
+                }
+                val songUrl = intent.getStringExtra(SONG_ITEM_KEY)
+                Log.d("url",songUrl.toString())
+                if (songUrl != null) {
+                    Log.d("sURL",songUrl)
+                }
+                Log.d("ActionPlay",action)
                 if (isPaused) {
+                    Log.d("aPlay",isPaused.toString())
                     mediaPlayer.start()
                     isPaused = false
                 } else {
-                    if (songItem != null) {
-                        startMusicPlayback(songItem)
+                    if (songUrl != null) {
+                        startMusicPlayback(songUrl)
                         Log.d("playyy",startId.toString())
                     }
                 }
@@ -83,21 +94,41 @@ class MusicService : Service() {
                 isPaused = true
             }
             ACTION_NEXT -> {
-                if (songItem != null) {
-                    Log.d("music",songItem.url.toString())
-                    startMusicPlayback(songItem)
+                retrieveNextSong()
+                if (currentSongIndex >= 0 && currentSongIndex < (songList?.size ?: 0)) {
+                    val nextSong = songList?.get(currentSongIndex + 1)
+                    nextSong?.url?.let { startMusicPlayback(it) }
+                    if (nextSong != null) {
+                        songName = nextSong.title.toString()
+                        artistName = nextSong.artist.toString()
+                        currentSongIndex++
+                        sendSongChangedBroadcast(currentSongIndex)
+                    }
+                }
+            }
+            ACTION_PREVIOUS -> {
+                retrievePreviousSong()
+                if (currentSongIndex >= 0 && currentSongIndex < (songList?.size ?: 0)) {
+                    val previousSong = songList?.get(currentSongIndex - 1)
+                    previousSong?.url?.let { startMusicPlayback(it) }
+                    if (previousSong != null) {
+                        songName = previousSong.title.toString()
+                        artistName = previousSong.artist.toString()
+                        currentSongIndex--
+                        sendSongChangedBroadcast(currentSongIndex)
+                    }
                 }
             }
         }
-
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
+
         return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(musicBroadcastReceiver)
+        unregisterReceiver(MusicBroadcastReceiver())
         audioManager.abandonAudioFocus(null)
         mediaPlayer.release()
     }
@@ -135,18 +166,37 @@ class MusicService : Service() {
             nextIntent,
             PendingIntent.FLAG_UPDATE_CURRENT
         )
+        val prevIntent = Intent(ACTION_PREVIOUS)
+        val prevPendingIntent = PendingIntent.getBroadcast(
+            this,
+            0,
+            prevIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val playPauseIcon = if (isPaused) {
+            R.drawable.baseline_play_circle_filled_24 // Show play icon if paused
+        } else {
+            R.drawable.pause // Show pause icon if playing
+        }
+        val playPauseText = if (isPaused) {
+            "Play" // Show "Play" text if paused
+        } else {
+            "Pause" // Show "Pause" text if playing
+        }
+
+
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Music")
-            .setContentText("Playing Music")
+            .setContentTitle(songName)
+            .setContentText(artistName)
             .setSmallIcon(R.drawable.music_note)
             .setContentIntent(pendingIntent).setColor(R.color.grey)
-            .addAction(R.drawable.baseline_play_circle_filled_24, "Play", playPendingIntent)
-            .addAction(R.drawable.pause, "Pause", pausePendingIntent)
+            .addAction(R.drawable.skip_previous,"Prev",prevPendingIntent)
+            .addAction(playPauseIcon, playPauseText, if (isPaused) playPendingIntent else pausePendingIntent)
             .addAction(R.drawable.skip_next, "Next", nextPendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOnlyAlertOnce(true)
             .build()
+
+        Log.d("channel",channelId)
 
         return notification
     }
@@ -155,180 +205,80 @@ class MusicService : Service() {
     private fun createNotificationChannel(channelId: String) {
         val channel = NotificationChannel(
             channelId,
-            "Music Channel",
+            "Music Player",
             NotificationManager.IMPORTANCE_LOW
         )
-        val notificationManager = getSystemService(NotificationManager::class.java)
+        channel.setSound(null, null)
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(channel)
     }
 
-    private fun startMusicPlayback(songItem: songsItem) {
-        songItem.title?.let {
-            Retrofit.apiInterface.getSongUrl(songItem.url ?: "").enqueue(object : Callback<songsItem> {
-                @RequiresApi(Build.VERSION_CODES.O)
-                override fun onResponse(call: Call<songsItem>, response: Response<songsItem>) {
-                    if (response.isSuccessful) {
-                        val inputStream = response.body()?.url
-                        Log.d("input",inputStream.toString())
-                        if (!inputStream.isNullOrEmpty()) {
-                            try {
-                                Log.d("here",response.message())
-                                mediaPlayer.reset()
-                                mediaPlayer.setDataSource(inputStream)
-                                mediaPlayer.prepareAsync()
-                                mediaPlayer.setOnPreparedListener {
-                                    Log.d("mp",mediaPlayer.getDrmPropertyString(notificationManager.toString()))
-                                    mediaPlayer.start()
-
-                                }
-                            } catch (e: Exception) {
-                                Log.d("exception",e.message.toString())
-                                e.printStackTrace()
-                            }
-                        }
-                    }
+    private fun startMusicPlayback(songUrl: String) {
+        try {
+            if (songUrl.isNotEmpty()) {
+                mediaPlayer.reset()
+                mediaPlayer.setDataSource(songUrl)
+                mediaPlayer.prepareAsync()
+                mediaPlayer.setOnPreparedListener {
+                    Log.d("mp",mediaPlayer.toString())
+                    mediaPlayer.start()
                 }
-
-                override fun onFailure(call: Call<songsItem>, t: Throwable) {
-                    Log.d("failed",t.message.toString())
-                    Toast.makeText(context, "Failed to fetch song URL", Toast.LENGTH_SHORT).show()
-                }
-            })
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
         }
     }
+    private fun retrieveNextSong() {
+        currentSongIndex++
+        if (currentSongIndex >= (songList?.size ?: 0)) {
+            currentSongIndex = 0
+        }
+    }
+    private fun retrievePreviousSong() {
+        currentSongIndex--
+        if (currentSongIndex < 0) {
+            currentSongIndex = songList?.size?.minus(1) ?: 0
+        }
+    }
+    private fun sendSongChangedBroadcast(songIndex: Int) {
+        val broadcastIntent = Intent().apply {
+            action = ACTION_SONG_CHANGED
+            putExtra(CURRENT_SONG_INDEX, songIndex)
+        }
+        sendBroadcast(broadcastIntent)
+    }
 
-    companion object {
-        private const val ACTION_KEY = "ACTION"
-        private const val SONG_ITEM_KEY = "SONG_ITEM"
-        private const val NOTIFICATION_ID = 1
+    inner class MusicBroadcastReceiver : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d("music", "onReceive")
+            val action = intent?.action
 
-        const val ACTION_PLAY = "com.example.musicplayer.ACTION_PLAY"
-        const val ACTION_PAUSE = "com.example.musicplayer.ACTION_PAUSE"
-        const val ACTION_NEXT = "com.example.musicplayer.ACTION_NEXT"
+            val serviceIntent = Intent(context, MusicService::class.java).apply {
+                putExtra(ACTION_KEY, action)
+                putExtra(NAME, songName)
+                putExtra(SONG, artistName)
+                putExtra(IMAGE, image)
+                putParcelableArrayListExtra("songList", songList)
+            }
+            startService(serviceIntent)
+        }
 
     }
+
+
+    companion object {
+        private const val ACTION_KEY = "action"
+        private const val SONG_ITEM_KEY = "song_item"
+        private const val ACTION_PLAY = "play"
+        private const val ACTION_PAUSE = "pause"
+        private const val ACTION_PREVIOUS = "previous"
+        private const val ACTION_NEXT = "next"
+        private const val NOTIFICATION_ID = 1
+        private const val CURRENT_SONG_INDEX = "current_song_index"
+        private const val NAME="name"
+        const val ACTION_SONG_CHANGED = "com.example.musicplayer.mp3.service.ACTION_SONG_CHANGED"
+        private const val SONG="song"
+        private const val IMAGE="image"
+    }
 }
-
-
-//class MusicService: Service() {
-//    private lateinit var mediaPlayer: MediaPlayer
-//    private lateinit var notificationManager: NotificationManagerCompat
-//    private var currentSongIndex = 0
-//    private var isPaused = false
-//
-//    override fun onBind(intent: Intent?): IBinder? {
-//        return null
-//    }
-//
-//    override fun onCreate() {
-//        super.onCreate()
-//        mediaPlayer= MediaPlayer()
-//        notificationManager= NotificationManagerCompat.from(this)
-//    }
-//
-//    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-//        val action = intent?.getStringExtra(ACTION_KEY)
-//        when (action) {
-//            ACTION_PLAY -> {
-//                if (isPaused) {
-//                    mediaPlayer.start()
-//                    isPaused = false
-//                } else {
-//                    currentSongIndex = intent.getIntExtra(SONG_INDEX_KEY, 0)
-//                    startMusicPlayback()
-//                }
-//            }
-//            ACTION_PAUSE -> {
-//                mediaPlayer.pause()
-//                isPaused = true
-//            }
-//            ACTION_NEXT -> {
-//                currentSongIndex = (currentSongIndex + 1) % totalSongsCount
-//                startMusicPlayback()
-//            }
-//        }
-//
-//        val notification = createNotification()
-//        startForeground(NOTIFICATION_ID, notification)
-//        return START_STICKY
-//    }
-//
-//    override fun onDestroy() {
-//        super.onDestroy()
-//        mediaPlayer.release()
-//    }
-//
-//    @SuppressLint("UnspecifiedImmutableFlag")
-//    private fun createNotification(): Notification {
-//        val channelId = "music_channel"
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-//            createNotificationChannel(channelId)
-//        }
-//
-//        val notificationIntent = Intent(this, Music::class.java)
-//        val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0)
-//
-//        // Create the pending intents for the playback actions
-//        val playIntent = Intent(this, MusicService::class.java).apply {
-//            action = ACTION_PLAY
-//            putExtra(SONG_INDEX_KEY, Random.nextInt(0,2))
-//        }
-//        val playPendingIntent = PendingIntent.getService(this, 0, playIntent, PendingIntent.FLAG_UPDATE_CURRENT)
-//
-//        val pauseIntent = Intent(this, MusicService::class.java).apply {
-//            action = ACTION_PAUSE
-//        }
-//        val pausePendingIntent = PendingIntent.getService(this, 0, pauseIntent, PendingIntent.FLAG_UPDATE_CURRENT)
-//
-//
-//        val nextIntent = Intent(this, MusicService::class.java).apply {
-//            action = ACTION_NEXT
-//        }
-//        val nextPendingIntent = PendingIntent.getService(this, 0, nextIntent, PendingIntent.FLAG_UPDATE_CURRENT)
-//
-//        val notification = NotificationCompat.Builder(this, channelId)
-//            .setContentTitle("Music")
-//            .setContentText("Playing Music")
-//            .setSmallIcon(R.drawable.music_note)
-//            .setContentIntent(pendingIntent)
-//            .addAction(NotificationCompat.Action(R.drawable.skip_previous, "Previous", null)) // Add previous button if needed
-//            .addAction(NotificationCompat.Action(R.drawable.baseline_play_circle_filled_24,"Play", playPendingIntent))
-//            .addAction(NotificationCompat.Action(R.drawable.pause,"Pause",pausePendingIntent))
-//            .addAction(NotificationCompat.Action(R.drawable.skip_next, "Next", nextPendingIntent))
-//            .setPriority(NotificationCompat.PRIORITY_LOW)
-//            .build()
-//
-//        return notification
-//    }
-//    private fun startMusicPlayback() {
-//        Retrofit.apiInterface.getSongs().enqueue(callbac)
-//    }
-//    private fun getSongResourceId(songIndex: Int): Int {
-//        return when (songIndex) {
-////            0 -> R.raw.song1 // Replace with the actual resource ID of your first song
-////            1 -> R.raw.song2 // Replace with the actual resource ID of your second song
-//            else -> throw IllegalArgumentException("Invalid song index: $songIndex")
-//        }
-//    }
-//    @RequiresApi(Build.VERSION_CODES.O)
-//    private fun createNotificationChannel(channelId: String) {
-//        val channelName = "Music Channel"
-//        val channel = NotificationChannel(
-//            channelId,
-//            channelName,
-//            NotificationManager.IMPORTANCE_LOW
-//        )
-//        val notificationManager = getSystemService(NotificationManager::class.java)
-//        notificationManager.createNotificationChannel(channel)
-//    }
-//    companion object {
-//        private const val NOTIFICATION_ID = 1
-//        private const val ACTION_KEY = "action"
-//        private const val ACTION_PLAY = "play"  // Update the type to String
-//        private const val ACTION_PAUSE = "pause"
-//        private const val ACTION_NEXT = "next"
-//        private const val SONG_INDEX_KEY = "songIndex"
-//        private val totalSongsCount = 2 // Total number of songs
-//    }
-//
-//}

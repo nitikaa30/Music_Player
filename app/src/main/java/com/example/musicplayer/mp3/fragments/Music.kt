@@ -1,6 +1,9 @@
 package com.example.musicplayer.mp3.fragments
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -29,11 +32,14 @@ class Music : Fragment()  {
     private lateinit var musicPlayerServiceIntent: Intent
     private var isMusicPlaying = false
     private var currentSong: songsItem?=null
+    private var currentSongIndex: Int = -1
+    private var songList: ArrayList<songsItem>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         arguments?.let {
+            songList = it.getParcelableArrayList("songList")
             currentSong = it.getParcelable(SONG_ITEM_KEY)
         }
     }
@@ -59,11 +65,21 @@ class Music : Fragment()  {
             binding.mStart.visibility=View.GONE
             binding.mPause.visibility=View.VISIBLE
             if (!isMusicPlaying) {
+                currentSongIndex= currentSong?.id?.toInt() ?: 0
+                Log.d("cuIndex",currentSongIndex.toString())
                 currentSong?.url.let { it1 -> if (it1 != null) {
                     Log.d("iPlay",it1.toString())
                 }
                     if (it1 != null) {
-                        startmusicservice(ACTION_PLAY, it1)
+                        currentSong?.title?.let { it2 ->
+                            currentSong?.artist?.let { it3 ->
+                                currentSong?.artwork?.let { it4 ->
+                                    startmusicservice(ACTION_PLAY, it1,
+                                        it2, it3,currentSongIndex.toString(), it4
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 isMusicPlaying = true
@@ -76,26 +92,96 @@ class Music : Fragment()  {
             binding.mPause.visibility=View.GONE
             binding.mStart.visibility=View.VISIBLE
             if (isMusicPlaying) {
-                currentSong?.url?.let { it1 -> startmusicservice(ACTION_PAUSE, it1) }
+                currentSong?.url?.let { it1 -> currentSong?.title?.let { it2 ->
+                    currentSong?.artist?.let { it3 ->
+                        currentSong?.id?.let { it4 ->
+                            currentSong?.artwork?.let { it5 ->
+                                startmusicservice(ACTION_PAUSE, it1,
+                                    it2, it3, it4, it5
+                                )
+                            }
+                        }
+                    }
+                } }
                 isMusicPlaying = false
                 Log.d("Pause", currentSong?.artist.toString())
             }
         }
         binding.mSkipNext.setOnClickListener {
             if (isMusicPlaying) {
-                (currentSong)?.url?.let { it1 -> startmusicservice(ACTION_NEXT, it1) }
-                Log.d("Next", currentSong?.artist.toString())
+                retrieveSongFromAPI(currentSongIndex + 1)
+//                currentSongIndex = (currentSongIndex + 1) % totalSongsCount
+//                currentSong?.id = currentSongIndex.toString()
+                Log.d("id", currentSongIndex.toString())
+//                retrieveSongFromAPI(currentSongIndex)
             }
-            currentSong?.let { it1 -> updateUI(it1) }
+            currentSong?.let { updateUI(it) }
         }
         binding.mSkipPrevious.setOnClickListener {
             if (isMusicPlaying){
-                currentSong?.url?.let { it1 -> startmusicservice(ACTION_PREVIOUS, it1) }
+                    retrieveSongFromAPI(if (currentSongIndex == 0) totalSongsCount - 1 else currentSongIndex - 1)
                 Log.d("Previous", currentSong?.artist.toString())
             }
             currentSong?.let { it1 -> updateUI(it1) }
         }
     }
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun retrieveSongFromAPI(index: Int) {
+        currentSongIndex = index
+        if (currentSongIndex >= 0 && currentSongIndex < (songList?.size ?: 0)) {
+            currentSong = songList?.get(currentSongIndex)
+            currentSong?.url?.let { url ->
+                currentSong?.title?.let { title ->
+                    currentSong?.artist?.let { artist ->
+                        currentSong?.artwork?.let { artwork ->
+                            startmusicservice(
+                                ACTION_PLAY, url, title, artist, currentSongIndex.toString(), artwork
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    override fun onResume() {
+        super.onResume()
+
+        // Update the UI based on the current state of the music service
+        if (isMusicPlaying) {
+            binding.mStart.visibility = View.GONE
+            binding.mPause.visibility = View.VISIBLE
+        } else {
+            binding.mPause.visibility = View.GONE
+            binding.mStart.visibility = View.VISIBLE
+        }
+    }
+    private val musicBroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action
+            if (action == ACTION_SONG_CHANGED) {
+                val songIndex = intent.getIntExtra(CURRENT_SONG_INDEX, -1)
+                if (songIndex >= 0 && songIndex < (songList?.size ?: 0)) {
+                        currentSong = songList?.get(songIndex)
+                        currentSong?.let { updateUI(it) }
+                    }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val intentFilter = IntentFilter().apply {
+            addAction(ACTION_SONG_CHANGED)
+        }
+        requireActivity().registerReceiver(musicBroadcastReceiver, intentFilter)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        requireActivity().unregisterReceiver(musicBroadcastReceiver)
+    }
+
+
     private fun updateUI(songsItem: songsItem){
         Glide.with(this).load(songsItem.artwork).into(binding.mImage)
         binding.mArtist.text=songsItem.artist
@@ -103,47 +189,34 @@ class Music : Fragment()  {
         Log.d("Artist", binding.mArtist.toString())
     }
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun startmusicservice(action: String, songUrl:String) {
+    private fun startmusicservice(action: String, songUrl:String,sName:String,sArtist:String,id:String,image:String) {
         musicPlayerServiceIntent = Intent(requireContext(), MusicService::class.java).apply {
             putExtra(ACTION_KEY, action)
             putExtra(SONG_ITEM_KEY, songUrl)
+            putExtra(NAME,sArtist)
+            putExtra(SONG,sName)
+            putExtra(IMAGE,image)
+            putExtra(CURRENT_SONG_INDEX, currentSongIndex)
+            putParcelableArrayListExtra("songList", songList)
+            Log.d("item_key", songUrl)
             Log.d("service",action)
         }
         requireActivity().startForegroundService(musicPlayerServiceIntent)
     }
-//    @RequiresApi(Build.VERSION_CODES.O)
-//    private fun skipToNextSong() {
-//        val currentIndex = currentSong?.id?.toInt()
-//        val nextIndex = currentIndex?.plus(1)
-//        currentSong?.id = nextIndex.toString()
-//        currentSong?.let { startmusicservice(ACTION_NEXT, it) }
-//        currentSong?.let { updateUI(it) }
-//    }
-//
-//    @RequiresApi(Build.VERSION_CODES.O)
-//    private fun skipToPreviousSong() {
-//        val currentIndex = currentSong?.id?.toInt()
-//        val previousIndex = (currentIndex?.minus(1))
-//        currentSong?.id = previousIndex.toString()
-//        currentSong?.let { startmusicservice(ACTION_PREVIOUS, it) }
-//        currentSong?.let { updateUI(it) }
-//    }
     companion object {
         private const val ACTION_KEY = "action"
         private const val ACTION_PLAY = "play"
         private const val ACTION_PAUSE = "pause"
         private const val ACTION_NEXT = "next"
         private const val ACTION_PREVIOUS="previous"
-        private const val SONG_ITEM_KEY = "songItem"
+        private const val SONG_ITEM_KEY = "song_item"
+        private const val CURRENT_SONG_INDEX = "current_song_index"
+        private const val NAME="name"
+        private const val SONG="song"
+        private const val IMAGE="image"
+        const val ACTION_SONG_CHANGED = "com.example.musicplayer.mp3.fragments.ACTION_SONG_CHANGED"
         private val totalSongsCount = 6
 
-        fun newInstance(songItem: songsItem): Music {
-            val fragment = Music()
-            val args = Bundle()
-            args.putParcelable(SONG_ITEM_KEY, songItem)
-            fragment.arguments = args
-            return fragment
-        }
     }
 
 

@@ -18,7 +18,7 @@
             android:enabled="true"
             android:exported="false">
         </service>
-        <receiver android:name=".mp3.receiver.MusicBroadcastReceiver"/>
+        <receiver android:name=".mp3.service.MusicService$MusicBroadcastReceiver"/>
         <activity
             android:name=".MainActivity"
             android:exported="true">

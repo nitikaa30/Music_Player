@@ -25,6 +25,7 @@ class MusicList : Fragment() {
     private lateinit var binding: FragmentMusicListBinding
     private lateinit var adapter:Adapter
     private lateinit var linearLayoutManager: LinearLayoutManager
+    private var list: ArrayList<songsItem>?=null
 
 
     override fun onCreateView(
@@ -48,9 +49,9 @@ class MusicList : Fragment() {
         Log.d("adap",adapter.toString())
         Retrofit.apiInterface.getSongs().enqueue(object: Callback<songs> {
             override fun onResponse(call: Call<songs>, response: Response<songs>) {
-                val list:ArrayList<songsItem>?=response.body()
+                list=response.body()
                 if (list != null) {
-                    adapter.setItems(list) // Update the adapter with the new list of songs
+                    adapter.setItems(list as songs) // Update the adapter with the new list of songs
                 }
             }
 
@@ -62,6 +63,7 @@ class MusicList : Fragment() {
         adapter.setOnItemClickListener(object :Adapter.OnItemClickListener{
             override fun onItemClick(song: songsItem) {
                 val bundle = bundleOf("songItem" to song)
+                bundle.putParcelableArrayList("songList",list)
                 findNavController().navigate(R.id.action_musicList_to_music,bundle)
 
             }

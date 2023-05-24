@@ -7,10 +7,30 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     tools:context=".mp3.fragments.MusicList">
 
+   <TextView
+       android:id="@+id/title"
+       android:layout_width="match_parent"
+       android:layout_height="wrap_content"
+       android:text="MUSIC PLAYER"
+       android:textStyle="bold"
+       android:textColor="#778da9"
+       android:textSize="@dimen/_30sdp"
+       android:layout_marginStart="@dimen/_12sdp"
+       app:layout_constraintTop_toTopOf="parent"
+       app:layout_constraintStart_toStartOf="parent"
+       app:layout_constraintEnd_toEndOf="parent"
+       android:layout_marginTop="@dimen/_30sdp"/>
+
    <androidx.recyclerview.widget.RecyclerView
        android:id="@+id/recyclerView"
        android:layout_width="match_parent"
-       android:layout_height="match_parent"
+       android:layout_height="wrap_content"
+       android:layout_marginStart="@dimen/_12sdp"
+       android:layout_marginEnd="@dimen/_12sdp"
+       app:layout_constraintStart_toStartOf="parent"
+       app:layout_constraintEnd_toEndOf="parent"
+       app:layout_constraintTop_toTopOf="@id/title"
+       android:layout_marginTop="@dimen/_70sdp"
        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

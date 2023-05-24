@@ -3,13 +3,15 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    app:cardCornerRadius="2dp"
-    app:cardElevation="4dp"
+    app:cardCornerRadius="@dimen/_4sdp"
+    app:cardElevation="@dimen/_3sdp"
     app:cardUseCompatPadding="true"
     xmlns:app="http://schemas.android.com/apk/res-auto">
+
     <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:background="#3e385e">
         <ImageView
             android:id="@+id/sImage"
             android:layout_width="@dimen/_25sdp"
@@ -19,19 +21,21 @@
         <TextView
             android:id="@+id/sName"
             android:layout_width="@dimen/_250sdp"
-            android:layout_height="@dimen/_15sdp"
-            android:layout_marginStart="@dimen/_67sdp"
+            android:layout_height="@dimen/_16sdp"
+            android:layout_marginStart="@dimen/_37sdp"
             android:layout_marginTop="@dimen/_5sdp"
-            android:textSize="@dimen/_12sdp"
-            android:textStyle="bold"/>
+            android:textSize="@dimen/_13sdp"
+            android:textStyle="bold"
+            android:textColor="#efd5e3"/>
         <TextView
             android:id="@+id/sSinger"
             android:layout_width="@dimen/_250sdp"
-            android:layout_height="@dimen/_10sdp"
-            android:layout_marginTop="@dimen/_22sdp"
-            android:layout_marginStart="@dimen/_67sdp"
+            android:layout_height="@dimen/_11sdp"
+            android:layout_marginTop="@dimen/_23sdp"
+            android:layout_marginStart="@dimen/_37sdp"
             android:layout_marginBottom="@dimen/_5sdp"
-            android:textSize="@dimen/_8sdp"/>
+            android:textSize="@dimen/_8sdp"
+            android:textColor="#efd5e3"/>
 
     </RelativeLayout>
 

@@ -11,5 +11,5 @@ interface API {
     fun getSongs(): Call<songs>
 
     @GET("f0d68f29-3dbc-4b47-8c6c-2f0c587edd87")
-    fun getSongUrl(@Url url:String): Call<songsItem>
+    fun getSongUrl(): Call<songsItem>
 }
