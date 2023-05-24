@@ -8,6 +8,16 @@
     tools:context=".mp3.fragments.Music">
 
     <ImageView
+        android:id="@+id/back"
+        android:layout_width="@dimen/_40sdp"
+        android:layout_height="@dimen/_40sdp"
+        android:src="@drawable/back"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        android:layout_marginTop="@dimen/_15sdp"
+        android:layout_marginStart="@dimen/_12sdp"/>
+
+    <ImageView
         android:id="@+id/mImage"
         android:layout_width="@dimen/_150sdp"
         android:layout_height="@dimen/_150sdp"

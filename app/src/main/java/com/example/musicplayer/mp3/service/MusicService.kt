@@ -1,17 +1,20 @@
 package com.example.musicplayer.mp3.service
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.*
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.musicplayer.R
@@ -29,6 +32,8 @@ class MusicService : Service() {
     private var image:String=""
     private var currentSongIndex: Int = -1
     private var songList: ArrayList<songsItem>? = null
+    private var totalSongsCount = songList?.size ?: 0
+
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
@@ -64,14 +69,13 @@ class MusicService : Service() {
         image=intent?.getStringExtra(IMAGE).toString()
         songList = intent?.getParcelableArrayListExtra("songList")
         currentSongIndex = intent?.getIntExtra(CURRENT_SONG_INDEX, -1) ?: -1
+        totalSongsCount = songList?.size ?: 0
 
         Log.d("sAction",action.toString())
 
         when (action) {
             ACTION_PLAY -> {
-                if (!isPaused && mediaPlayer.isPlaying) {
-                    return START_STICKY
-                }
+
                 val songUrl = intent.getStringExtra(SONG_ITEM_KEY)
                 Log.d("url",songUrl.toString())
                 if (songUrl != null) {
@@ -95,27 +99,27 @@ class MusicService : Service() {
             }
             ACTION_NEXT -> {
                 retrieveNextSong()
-                if (currentSongIndex >= 0 && currentSongIndex < (songList?.size ?: 0)) {
-                    val nextSong = songList?.get(currentSongIndex + 1)
+                if (currentSongIndex in 0..totalSongsCount) {
+                    val nextSong = songList?.get(currentSongIndex)
+                    Log.d("currI",currentSongIndex.toString())
                     nextSong?.url?.let { startMusicPlayback(it) }
                     if (nextSong != null) {
-                        songName = nextSong.title.toString()
+                        songName = nextSong.title.toString()// Update songName
                         artistName = nextSong.artist.toString()
-                        currentSongIndex++
-                        sendSongChangedBroadcast(currentSongIndex)
+                        Log.d("Nextmusic",nextSong.url.toString())
                     }
                 }
             }
             ACTION_PREVIOUS -> {
                 retrievePreviousSong()
-                if (currentSongIndex >= 0 && currentSongIndex < (songList?.size ?: 0)) {
-                    val previousSong = songList?.get(currentSongIndex - 1)
+                if (currentSongIndex in 0 until totalSongsCount) {
+                    val previousSong = songList?.get(currentSongIndex)
+                    Log.d("currP",currentSongIndex.toString())
                     previousSong?.url?.let { startMusicPlayback(it) }
                     if (previousSong != null) {
-                        songName = previousSong.title.toString()
+                        songName = previousSong.title.toString() // Update songName
                         artistName = previousSong.artist.toString()
-                        currentSongIndex--
-                        sendSongChangedBroadcast(currentSongIndex)
+                        Log.d("musicha",previousSong.url.toString())
                     }
                 }
             }
@@ -124,6 +128,11 @@ class MusicService : Service() {
         startForeground(NOTIFICATION_ID, notification)
 
         return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        stopSelf() // Stop the service when the app is removed from the recent apps list
     }
 
     override fun onDestroy() {
@@ -225,28 +234,47 @@ class MusicService : Service() {
                     mediaPlayer.start()
                 }
             }
+            mediaPlayer.setOnCompletionListener {
+                retrieveNextSong()
+                if (currentSongIndex in 0 until totalSongsCount) {
+                    val nextSong = songList?.get(currentSongIndex)
+                    nextSong?.url?.let { startMusicPlayback(it) }
+                    if (nextSong != null) {
+                        songName = nextSong.title.toString()
+                        Log.d("retriev",songName)
+                        artistName = nextSong.artist.toString()
+                    }
+                    val notification = createNotification()
+                    if (ActivityCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        // TODO: Consider calling
+                        //    ActivityCompat#requestPermissions
+                        // here to request the missing permissions, and then overriding
+                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                        //                                          int[] grantResults)
+                        // to handle the case where the user grants the permission. See the documentation
+                        // for ActivityCompat#requestPermissions for more details.
+                        return@setOnCompletionListener
+                    }
+                    notificationManager.notify(NOTIFICATION_ID, notification)
+                }
+            }
         } catch (e: IOException) {
             e.printStackTrace()
         }
     }
     private fun retrieveNextSong() {
-        currentSongIndex++
-        if (currentSongIndex >= (songList?.size ?: 0)) {
-            currentSongIndex = 0
-        }
+        currentSongIndex = (currentSongIndex + 1) % totalSongsCount
+        Log.d("INext",currentSongIndex.toString())
     }
     private fun retrievePreviousSong() {
-        currentSongIndex--
-        if (currentSongIndex < 0) {
-            currentSongIndex = songList?.size?.minus(1) ?: 0
-        }
-    }
-    private fun sendSongChangedBroadcast(songIndex: Int) {
-        val broadcastIntent = Intent().apply {
-            action = ACTION_SONG_CHANGED
-            putExtra(CURRENT_SONG_INDEX, songIndex)
-        }
-        sendBroadcast(broadcastIntent)
+//        currentSongIndex--
+        if (currentSongIndex == -1) currentSongIndex=totalSongsCount  else currentSongIndex -= 1
+        Log.d("total",totalSongsCount.toString())
+        Log.d("IPrev",currentSongIndex.toString())
     }
 
     inner class MusicBroadcastReceiver : BroadcastReceiver() {
@@ -259,6 +287,7 @@ class MusicService : Service() {
                 putExtra(NAME, songName)
                 putExtra(SONG, artistName)
                 putExtra(IMAGE, image)
+                putExtra(CURRENT_SONG_INDEX,currentSongIndex)
                 putParcelableArrayListExtra("songList", songList)
             }
             startService(serviceIntent)
@@ -277,8 +306,8 @@ class MusicService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val CURRENT_SONG_INDEX = "current_song_index"
         private const val NAME="name"
-        const val ACTION_SONG_CHANGED = "com.example.musicplayer.mp3.service.ACTION_SONG_CHANGED"
         private const val SONG="song"
         private const val IMAGE="image"
+        private val totalSongsCount = 6
     }
 }

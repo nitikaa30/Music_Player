@@ -3,7 +3,6 @@ package com.example.musicplayer.mp3.fragments
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -12,20 +11,12 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.RequiresApi
-import androidx.core.content.ContextCompat
-import androidx.navigation.fragment.navArgs
+import androidx.navigation.fragment.findNavController
 import com.bumptech.glide.Glide
+import com.example.musicplayer.R
 import com.example.musicplayer.databinding.FragmentMusicBinding
-import com.example.musicplayer.mp3.model.songs
 import com.example.musicplayer.mp3.model.songsItem
-import com.example.musicplayer.mp3.retrofit.Retrofit
 import com.example.musicplayer.mp3.service.MusicService
-import androidx.navigation.fragment.navArgs
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
-import kotlin.random.Random
-
 
 class Music : Fragment()  {
     private lateinit var binding: FragmentMusicBinding
@@ -56,6 +47,10 @@ class Music : Fragment()  {
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        binding.back.setOnClickListener {
+            findNavController().navigate(R.id.action_music_to_musicList)
+        }
 
 
         currentSong = arguments?.getParcelable("songItem")
@@ -109,7 +104,7 @@ class Music : Fragment()  {
         }
         binding.mSkipNext.setOnClickListener {
             if (isMusicPlaying) {
-                retrieveSongFromAPI(currentSongIndex + 1)
+                retrieveSongFromAPI(if (currentSongIndex == totalSongsCount) 0 else currentSongIndex + 1)
 //                currentSongIndex = (currentSongIndex + 1) % totalSongsCount
 //                currentSong?.id = currentSongIndex.toString()
                 Log.d("id", currentSongIndex.toString())
@@ -119,7 +114,7 @@ class Music : Fragment()  {
         }
         binding.mSkipPrevious.setOnClickListener {
             if (isMusicPlaying){
-                    retrieveSongFromAPI(if (currentSongIndex == 0) totalSongsCount - 1 else currentSongIndex - 1)
+                retrieveSongFromAPI(if (currentSongIndex == 0) totalSongsCount - 1 else currentSongIndex - 1)
                 Log.d("Previous", currentSong?.artist.toString())
             }
             currentSong?.let { it1 -> updateUI(it1) }
@@ -133,9 +128,9 @@ class Music : Fragment()  {
             currentSong?.url?.let { url ->
                 currentSong?.title?.let { title ->
                     currentSong?.artist?.let { artist ->
-                        currentSong?.artwork?.let { artwork ->
+                        currentSong?.artwork?.let {
                             startmusicservice(
-                                ACTION_PLAY, url, title, artist, currentSongIndex.toString(), artwork
+                                ACTION_PLAY, url, title, artist, currentSongIndex.toString(), it
                             )
                         }
                     }
@@ -145,8 +140,6 @@ class Music : Fragment()  {
     }
     override fun onResume() {
         super.onResume()
-
-        // Update the UI based on the current state of the music service
         if (isMusicPlaying) {
             binding.mStart.visibility = View.GONE
             binding.mPause.visibility = View.VISIBLE
@@ -155,31 +148,7 @@ class Music : Fragment()  {
             binding.mStart.visibility = View.VISIBLE
         }
     }
-    private val musicBroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val action = intent?.action
-            if (action == ACTION_SONG_CHANGED) {
-                val songIndex = intent.getIntExtra(CURRENT_SONG_INDEX, -1)
-                if (songIndex >= 0 && songIndex < (songList?.size ?: 0)) {
-                        currentSong = songList?.get(songIndex)
-                        currentSong?.let { updateUI(it) }
-                    }
-            }
-        }
-    }
 
-    override fun onStart() {
-        super.onStart()
-        val intentFilter = IntentFilter().apply {
-            addAction(ACTION_SONG_CHANGED)
-        }
-        requireActivity().registerReceiver(musicBroadcastReceiver, intentFilter)
-    }
-
-    override fun onStop() {
-        super.onStop()
-        requireActivity().unregisterReceiver(musicBroadcastReceiver)
-    }
 
 
     private fun updateUI(songsItem: songsItem){
@@ -203,6 +172,7 @@ class Music : Fragment()  {
         }
         requireActivity().startForegroundService(musicPlayerServiceIntent)
     }
+
     companion object {
         private const val ACTION_KEY = "action"
         private const val ACTION_PLAY = "play"
@@ -214,7 +184,6 @@ class Music : Fragment()  {
         private const val NAME="name"
         private const val SONG="song"
         private const val IMAGE="image"
-        const val ACTION_SONG_CHANGED = "com.example.musicplayer.mp3.fragments.ACTION_SONG_CHANGED"
         private val totalSongsCount = 6
 
     }
