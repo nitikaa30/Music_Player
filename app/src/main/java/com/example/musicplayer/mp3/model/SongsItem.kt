@@ -3,7 +3,7 @@ package com.example.musicplayer.mp3.model
 import android.os.Parcel
 import android.os.Parcelable
 
-data class songsItem(
+data class SongsItem(
     val artist: String?,
     val artwork: String?,
     var id: String?,
@@ -31,12 +31,12 @@ data class songsItem(
         return 0
     }
 
-    companion object CREATOR : Parcelable.Creator<songsItem> {
-        override fun createFromParcel(parcel: Parcel): songsItem {
-            return songsItem(parcel)
+    companion object CREATOR : Parcelable.Creator<SongsItem> {
+        override fun createFromParcel(parcel: Parcel): SongsItem {
+            return SongsItem(parcel)
         }
 
-        override fun newArray(size: Int): Array<songsItem?> {
+        override fun newArray(size: Int): Array<SongsItem?> {
             return arrayOfNulls(size)
         }
     }

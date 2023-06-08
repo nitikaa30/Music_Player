@@ -3,6 +3,7 @@ package com.example.musicplayer.mp3.service
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.*
+import android.app.Notification.EXTRA_PROGRESS
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,8 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -19,38 +22,65 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.musicplayer.R
 import com.example.musicplayer.mp3.fragments.Music
-import com.example.musicplayer.mp3.model.songsItem
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
+import androidx.lifecycle.MutableLiveData
+import com.example.musicplayer.mp3.model.SongState
+import com.example.musicplayer.mp3.model.SongsItem
 import java.io.IOException
+import java.util.*
+import kotlin.collections.ArrayList
 
 class MusicService : Service() {
-    private lateinit var mediaPlayer: MediaPlayer
+    private lateinit var mediaSession: MediaSessionCompat
+    private lateinit var playbackStateBuilder: PlaybackStateCompat.Builder
+    private var mediaPlayer=MediaPlayer()
     private lateinit var audioManager: AudioManager
     private lateinit var notificationManager: NotificationManagerCompat
     private var isPaused = false
+    private var isPlaying = false
     private var songName: String = ""
     private var artistName: String = ""
     private var image:String=""
     private var currentSongIndex: Int = -1
-    private var songList: ArrayList<songsItem>? = null
+    private var songList: ArrayList<SongsItem>? = null
     private var totalSongsCount = songList?.size ?: 0
-
+    private var songDuration: Int = 0
+    private var _currentPosition: Int = 0
+    private val musicBroadcastReceiver = MusicBroadcastReceiver()
+    private var musicFragment: Music? = null
+    private var musicProgressCallback: MusicProgressCallback? = null
+    private val handler=Handler()
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
 
+
     override fun onCreate() {
         super.onCreate()
 
+        val musicFragment = Music()
+        val args = Bundle().apply {
+            putInt(Music.ARG_SONG_DURATION, songDuration)
+        }
+        musicFragment.arguments = args
+
+        mediaSession = MediaSessionCompat(this, "MusicService")
+        mediaSession.isActive = true
+
+
+
         Log.d("onCreate","onCreate")
-        mediaPlayer = MediaPlayer()
         notificationManager = NotificationManagerCompat.from(this)
-        registerReceiver(MusicBroadcastReceiver(), IntentFilter().apply {
-            Log.d("media",MusicBroadcastReceiver().toString())
+        registerReceiver(musicBroadcastReceiver, IntentFilter().apply {
+            Log.d("media",musicBroadcastReceiver.toString())
             addAction(ACTION_PLAY)
             addAction(ACTION_PAUSE)
             addAction(ACTION_NEXT)
             addAction(ACTION_PREVIOUS)
+            addAction(ACTION_PROGRESS)
+            addAction(ACTION_SEEK)
         })
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         audioManager.requestAudioFocus(
@@ -59,6 +89,8 @@ class MusicService : Service() {
             AudioManager.AUDIOFOCUS_GAIN
         )
         Log.d("audio",audioManager.toString())
+        initPlaybackStateBuilder()
+
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -67,9 +99,12 @@ class MusicService : Service() {
         songName= intent?.getStringExtra(NAME).toString()
         artistName= intent?.getStringExtra(SONG).toString()
         image=intent?.getStringExtra(IMAGE).toString()
-        songList = intent?.getParcelableArrayListExtra("songList")
+
+        if (intent != null) {
+            songList = intent.getParcelableArrayListExtra("songList")?: ArrayList()
+        }
         currentSongIndex = intent?.getIntExtra(CURRENT_SONG_INDEX, -1) ?: -1
-        totalSongsCount = songList?.size ?: 0
+        totalSongsCount = songList?.size?:0
 
         Log.d("sAction",action.toString())
 
@@ -88,12 +123,18 @@ class MusicService : Service() {
                     isPaused = false
                 } else {
                     if (songUrl != null) {
+                        isPlaying = true
+                        _song.postValue(SongState(isPlaying = true))
                         startMusicPlayback(songUrl)
                         Log.d("playyy",startId.toString())
                     }
                 }
+
             }
             ACTION_PAUSE -> {
+                isPlaying = false
+                _song.postValue(SongState(isPlaying = false))
+                mediaPlayer.seekTo(mediaPlayer.currentPosition)
                 mediaPlayer.pause()
                 isPaused = true
             }
@@ -101,6 +142,7 @@ class MusicService : Service() {
                 retrieveNextSong()
                 if (currentSongIndex in 0..totalSongsCount) {
                     val nextSong = songList?.get(currentSongIndex)
+                    _currentSong.value = nextSong
                     Log.d("currI",currentSongIndex.toString())
                     nextSong?.url?.let { startMusicPlayback(it) }
                     if (nextSong != null) {
@@ -114,6 +156,7 @@ class MusicService : Service() {
                 retrievePreviousSong()
                 if (currentSongIndex in 0 until totalSongsCount) {
                     val previousSong = songList?.get(currentSongIndex)
+                    _currentSong.value = previousSong
                     Log.d("currP",currentSongIndex.toString())
                     previousSong?.url?.let { startMusicPlayback(it) }
                     if (previousSong != null) {
@@ -122,6 +165,16 @@ class MusicService : Service() {
                         Log.d("musicha",previousSong.url.toString())
                     }
                 }
+            }
+            ACTION_SEEK -> {
+                val seekPosition = intent.getLongExtra(EXTRA_SEEK_POSITION, 0)
+                mediaPlayer.seekTo(seekPosition.toInt())
+                _currentPosition = seekPosition.toInt()
+                musicFragment?.updateSeekBarProgress(_currentPosition)
+            }
+            ACTION_PROGRESS -> {
+                val progress = intent.getIntExtra(EXTRA_PROGRESS, 0)
+                updateSeekBarProgress(progress)
             }
         }
         val notification = createNotification()
@@ -135,9 +188,19 @@ class MusicService : Service() {
         stopSelf() // Stop the service when the app is removed from the recent apps list
     }
 
+    fun setMusicSeek(seekTo: Int){
+        mediaPlayer.seekTo(seekTo)
+        _currentPosition = seekTo
+        val intent = Intent(ACTION_SEEK)
+        intent.putExtra(EXTRA_SEEK_POSITION, seekTo.toLong())
+        Log.d("seekPosition",seekTo.toString())
+
+    }
+
+
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(MusicBroadcastReceiver())
+        unregisterReceiver(musicBroadcastReceiver)
         audioManager.abandonAudioFocus(null)
         mediaPlayer.release()
     }
@@ -203,6 +266,12 @@ class MusicService : Service() {
             .addAction(R.drawable.skip_previous,"Prev",prevPendingIntent)
             .addAction(playPauseIcon, playPauseText, if (isPaused) playPendingIntent else pausePendingIntent)
             .addAction(R.drawable.skip_next, "Next", nextPendingIntent)
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(mediaSession.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
         Log.d("channel",channelId)
@@ -223,6 +292,11 @@ class MusicService : Service() {
         notificationManager.createNotificationChannel(channel)
     }
 
+    private fun updatePlaybackState(state: Int) {
+        playbackStateBuilder.setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1f)
+        mediaSession.setPlaybackState(playbackStateBuilder.build())
+    }
+
     private fun startMusicPlayback(songUrl: String) {
         try {
             if (songUrl.isNotEmpty()) {
@@ -231,7 +305,10 @@ class MusicService : Service() {
                 mediaPlayer.prepareAsync()
                 mediaPlayer.setOnPreparedListener {
                     Log.d("mp",mediaPlayer.toString())
+                    songDuration = mediaPlayer.duration
                     mediaPlayer.start()
+                    isPlaying = true
+                    _song.postValue(SongState(isPlaying = true))
                 }
             }
             mediaPlayer.setOnCompletionListener {
@@ -250,13 +327,6 @@ class MusicService : Service() {
                             Manifest.permission.POST_NOTIFICATIONS
                         ) != PackageManager.PERMISSION_GRANTED
                     ) {
-                        // TODO: Consider calling
-                        //    ActivityCompat#requestPermissions
-                        // here to request the missing permissions, and then overriding
-                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                        //                                          int[] grantResults)
-                        // to handle the case where the user grants the permission. See the documentation
-                        // for ActivityCompat#requestPermissions for more details.
                         return@setOnCompletionListener
                     }
                     notificationManager.notify(NOTIFICATION_ID, notification)
@@ -265,13 +335,57 @@ class MusicService : Service() {
         } catch (e: IOException) {
             e.printStackTrace()
         }
+        updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+
+        val timer = Timer()
+        val updateProgressTask = object : TimerTask() {
+            override fun run() {
+
+            }
+        }
+        timer.scheduleAtFixedRate(updateProgressTask, 0, 1000)
+
     }
+    private fun updateSeekBarProgress(progress: Int) {
+        if (isPlaying) {
+            val currentPosition = mediaPlayer.currentPosition
+            val progresss = ((currentPosition.toFloat()) / songDuration.toFloat()) * 100
+            Log.d("pOnplay",progresss.toString())
+            _currentPosition = progresss.toInt()
+            mediaPlayer.seekTo(progresss.toInt())
+
+            val progressIntent = Intent()
+            progressIntent.action = Music.ACTION_KEY
+            progressIntent.putExtra(Music.ARG_SONG_DURATION, currentPosition)
+            sendBroadcast(progressIntent)
+
+            val handler = Handler()
+            handler.postDelayed({ updateSeekBarProgress(progresss.toInt()) }, 1000)
+        }
+        musicProgressCallback?.onProgressUpdate(progress)
+        musicFragment?.updateSeekBarProgress(progress)
+        Log.d("progress",progress.toString())
+    }
+
+
+
+    private fun initPlaybackStateBuilder() {
+        playbackStateBuilder = PlaybackStateCompat.Builder()
+            .setActions(
+                PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackStateCompat.ACTION_SEEK_TO
+            )
+    }
+
     private fun retrieveNextSong() {
         currentSongIndex = (currentSongIndex + 1) % totalSongsCount
         Log.d("INext",currentSongIndex.toString())
     }
     private fun retrievePreviousSong() {
-//        currentSongIndex--
         if (currentSongIndex == -1) currentSongIndex=totalSongsCount  else currentSongIndex -= 1
         Log.d("total",totalSongsCount.toString())
         Log.d("IPrev",currentSongIndex.toString())
@@ -281,7 +395,6 @@ class MusicService : Service() {
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d("music", "onReceive")
             val action = intent?.action
-
             val serviceIntent = Intent(context, MusicService::class.java).apply {
                 putExtra(ACTION_KEY, action)
                 putExtra(NAME, songName)
@@ -295,7 +408,6 @@ class MusicService : Service() {
 
     }
 
-
     companion object {
         private const val ACTION_KEY = "action"
         private const val SONG_ITEM_KEY = "song_item"
@@ -308,6 +420,15 @@ class MusicService : Service() {
         private const val NAME="name"
         private const val SONG="song"
         private const val IMAGE="image"
-        private val totalSongsCount = 6
+        private const val ACTION_PROGRESS="progress"
+        const val ACTION_SEEK = "seek"
+        const val EXTRA_SEEK_POSITION = "extra_seek"
+
+        val _currentSong = MutableLiveData<SongsItem?>()
+        val _song= MutableLiveData<SongState?>()
+
+    }
+    interface MusicProgressCallback {
+        fun onProgressUpdate(progress: Int)
     }
 }

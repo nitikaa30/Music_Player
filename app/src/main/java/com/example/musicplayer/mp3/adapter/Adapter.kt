@@ -3,15 +3,13 @@ package com.example.musicplayer.mp3.adapter
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import android.widget.AdapterView
 import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.example.musicplayer.mp3.model.songs
 import com.example.musicplayer.databinding.SongCardBinding
-import com.example.musicplayer.mp3.model.songsItem
+import com.example.musicplayer.mp3.model.SongsItem
 
-class Adapter(private var items: ArrayList<songsItem>) :
+class Adapter(private var items: ArrayList<SongsItem>) :
     RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     private lateinit var context: Context
 
@@ -46,7 +44,7 @@ class Adapter(private var items: ArrayList<songsItem>) :
             }
         }
 
-        fun bind(item: songsItem) {
+        fun bind(item: SongsItem) {
             binding.sName.text = item.title
             binding.sSinger.text = item.artist
             Glide.with(context).load(item.artwork).into(binding.sImage)
@@ -54,7 +52,7 @@ class Adapter(private var items: ArrayList<songsItem>) :
     }
 
     interface OnItemClickListener {
-        fun onItemClick(song: songsItem)
+        fun onItemClick(song: SongsItem)
     }
 
     fun setOnItemClickListener(listener: OnItemClickListener) {
@@ -65,7 +63,7 @@ class Adapter(private var items: ArrayList<songsItem>) :
         return items.size
     }
 
-    fun setItems(newItems: ArrayList<songsItem>) {
+    fun setItems(newItems: ArrayList<SongsItem>) {
         items.clear()
         items.addAll(newItems)
         notifyDataSetChanged()

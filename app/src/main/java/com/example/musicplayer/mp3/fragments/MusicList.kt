@@ -10,12 +10,11 @@ import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.musicplayer.R
 import com.example.musicplayer.databinding.FragmentMusicListBinding
 import com.example.musicplayer.mp3.adapter.Adapter
-import com.example.musicplayer.mp3.model.songs
-import com.example.musicplayer.mp3.model.songsItem
+import com.example.musicplayer.mp3.model.Songs
+import com.example.musicplayer.mp3.model.SongsItem
 import com.example.musicplayer.mp3.retrofit.Retrofit
 import retrofit2.Call
 import retrofit2.Callback
@@ -25,7 +24,7 @@ class MusicList : Fragment() {
     private lateinit var binding: FragmentMusicListBinding
     private lateinit var adapter:Adapter
     private lateinit var linearLayoutManager: LinearLayoutManager
-    private var list: ArrayList<songsItem>?=null
+    private var list: ArrayList<SongsItem>?=null
 
 
     override fun onCreateView(
@@ -47,21 +46,21 @@ class MusicList : Fragment() {
         adapter=Adapter(ArrayList())
         binding.recyclerView.adapter=adapter
         Log.d("adap",adapter.toString())
-        Retrofit.apiInterface.getSongs().enqueue(object: Callback<songs> {
-            override fun onResponse(call: Call<songs>, response: Response<songs>) {
+        Retrofit.apiInterface.getSongs().enqueue(object: Callback<Songs> {
+            override fun onResponse(call: Call<Songs>, response: Response<Songs>) {
                 list=response.body()
                 if (list != null) {
-                    adapter.setItems(list as songs) // Update the adapter with the new list of songs
+                    adapter.setItems(list as Songs) // Update the adapter with the new list of songs
                 }
             }
 
-            override fun onFailure(call: Call<songs>, t: Throwable) {
+            override fun onFailure(call: Call<Songs>, t: Throwable) {
                 Toast.makeText(context,"nooo", Toast.LENGTH_LONG).show()
             }
 
         })
         adapter.setOnItemClickListener(object :Adapter.OnItemClickListener{
-            override fun onItemClick(song: songsItem) {
+            override fun onItemClick(song: SongsItem) {
                 val bundle = bundleOf("songItem" to song)
                 bundle.putParcelableArrayList("songList",list)
                 findNavController().navigate(R.id.action_musicList_to_music,bundle)

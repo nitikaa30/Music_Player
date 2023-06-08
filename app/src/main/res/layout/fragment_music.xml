@@ -9,13 +9,13 @@
 
     <ImageView
         android:id="@+id/back"
-        android:layout_width="@dimen/_40sdp"
-        android:layout_height="@dimen/_40sdp"
+        android:layout_width="@dimen/_35sdp"
+        android:layout_height="@dimen/_35sdp"
         android:src="@drawable/back"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        android:layout_marginTop="@dimen/_15sdp"
-        android:layout_marginStart="@dimen/_12sdp"/>
+        android:layout_marginTop="@dimen/_10sdp"
+        android:layout_marginStart="@dimen/_5sdp"/>
 
     <ImageView
         android:id="@+id/mImage"
@@ -50,17 +50,11 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/mSlide"/>
-   <com.google.android.material.slider.Slider
+   <SeekBar
        android:id="@+id/mSlide"
        android:layout_width="@dimen/_250sdp"
        android:layout_height="@dimen/_100sdp"
        android:layout_marginTop="@dimen/_5sdp"
-       app:tickColor="#52b69a"
-       app:thumbColor="#ADFF00"
-       app:tickColorInactive="#778da9"
-       app:trackColorActive="#415a77"
-       app:haloColor="#34a0a4"
-       app:thumbStrokeColor="#cb997e"
        app:layout_constraintStart_toStartOf="parent"
        app:layout_constraintEnd_toEndOf="parent"
        app:layout_constraintTop_toBottomOf="@id/mArtist"
